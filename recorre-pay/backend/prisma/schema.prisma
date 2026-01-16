@@ -1,0 +1,238 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== TENANT (Multi-tenant) ====================
+model Tenant {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  email     String   @unique
+  phone     String?
+
+  stripeCustomerId String? @unique
+  stripeAccountId  String? @unique
+
+  defaultDueDay      Int @default(10)
+  reminderDaysBefore Int @default(3)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users     User[]
+  customers Customer[]
+  plans     Plan[]
+
+  @@map("tenants")
+}
+
+// ==================== USUÁRIO ====================
+model User {
+  id       String   @id @default(uuid())
+  tenantId String
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name     String
+  email    String
+  password String
+  role     UserRole @default(OWNER)
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, email])
+  @@map("users")
+}
+
+enum UserRole {
+  OWNER
+  ADMIN
+  VIEWER
+}
+
+// ==================== CLIENTE ====================
+model Customer {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name     String
+  email    String
+  phone    String
+  document String?
+
+  stripeCustomerId String? @unique
+
+  notes    String?
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subscriptions Subscription[]
+  payments      Payment[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@map("customers")
+}
+
+// ==================== PLANO ====================
+model Plan {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name        String
+  description String?
+  price       Decimal @db.Decimal(10, 2)
+  currency    String  @default("BRL")
+
+  stripePriceId   String? @unique
+  stripeProductId String?
+
+  interval      BillingInterval @default(MONTHLY)
+  intervalCount Int             @default(1)
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subscriptions Subscription[]
+
+  @@index([tenantId])
+  @@map("plans")
+}
+
+enum BillingInterval {
+  WEEKLY
+  MONTHLY
+  YEARLY
+}
+
+// ==================== ASSINATURA ====================
+model Subscription {
+  id         String   @id @default(uuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  planId     String
+  plan       Plan     @relation(fields: [planId], references: [id])
+
+  stripeSubscriptionId String? @unique
+
+  status SubscriptionStatus @default(ACTIVE)
+
+  dueDay Int
+
+  startDate  DateTime  @default(now())
+  endDate    DateTime?
+  canceledAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  payments Payment[]
+
+  @@index([customerId])
+  @@index([status])
+  @@map("subscriptions")
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAUSED
+  CANCELED
+  PAST_DUE
+}
+
+// ==================== PAGAMENTO ====================
+model Payment {
+  id             String       @id @default(uuid())
+  subscriptionId String
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id])
+  customerId     String
+  customer       Customer     @relation(fields: [customerId], references: [id])
+
+  amount   Decimal @db.Decimal(10, 2)
+  currency String  @default("BRL")
+
+  stripePaymentIntentId String? @unique
+  stripeInvoiceId       String? @unique
+
+  status PaymentStatus @default(PENDING)
+
+  dueDate DateTime
+  paidAt  DateTime?
+
+  paymentMethod String?
+  paymentLink   String?
+
+  notes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([customerId])
+  @@index([subscriptionId])
+  @@index([status])
+  @@index([dueDate])
+  @@map("payments")
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  OVERDUE
+  CANCELED
+  REFUNDED
+}
+
+// ==================== NOTIFICAÇÃO ====================
+model Notification {
+  id String @id @default(uuid())
+
+  type    NotificationType
+  channel NotificationChannel
+
+  recipient String
+  subject   String?
+  message   String
+
+  status NotificationStatus @default(PENDING)
+  sentAt DateTime?
+  error  String?
+
+  paymentId String?
+
+  createdAt DateTime @default(now())
+
+  @@index([status])
+  @@map("notifications")
+}
+
+enum NotificationType {
+  PAYMENT_REMINDER
+  PAYMENT_OVERDUE
+  PAYMENT_CONFIRMED
+  WELCOME
+}
+
+enum NotificationChannel {
+  EMAIL
+  WHATSAPP
+  SMS
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
