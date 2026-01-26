@@ -8,6 +8,8 @@ import { PlansModule } from './modules/plans/plans.module';
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { TasksModule } from './modules/tasks/tasks.module';
+import { StripeModule } from './modules/stripe/stripe.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 
@@ -23,6 +25,8 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
     SubscriptionsModule,
     PaymentsModule,
     DashboardModule,
+    TasksModule,
+    StripeModule,
   ],
   providers: [
     {

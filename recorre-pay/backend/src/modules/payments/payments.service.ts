@@ -1,9 +1,13 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { StripeService } from '../stripe/stripe.service';
 
 @Injectable()
 export class PaymentsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private stripeService: StripeService,
+  ) {}
 
   async findAll(
     tenantId: string,
@@ -130,16 +134,23 @@ export class PaymentsService {
   }
 
   async generateLink(id: string, tenantId: string) {
-    const payment = await this.findOne(id, tenantId);
+    // Verify payment exists and belongs to tenant
+    await this.findOne(id, tenantId);
 
-    // Generate a simple payment link (in production, this would integrate with Stripe)
-    const paymentLink = `https://pay.recorrepay.com/${payment.id}`;
+    try {
+      // Generate Stripe Checkout link
+      const paymentLink = await this.stripeService.createPaymentLink(id);
+      return { paymentLink };
+    } catch (error) {
+      // Fallback to simple link if Stripe is not configured
+      const paymentLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/pay/${id}`;
 
-    await this.prisma.payment.update({
-      where: { id },
-      data: { paymentLink },
-    });
+      await this.prisma.payment.update({
+        where: { id },
+        data: { paymentLink },
+      });
 
-    return { paymentLink };
+      return { paymentLink };
+    }
   }
 }

@@ -4,7 +4,7 @@ import PrivateRoute from './PrivateRoute';
 import { ROUTES } from '../utils/constants';
 
 // Auth Pages
-import { Login, Register, ForgotPassword } from '../pages/auth';
+import { Login, Register, ForgotPassword, ResetPassword } from '../pages/auth';
 
 // App Pages
 import { Dashboard } from '../pages/dashboard';
@@ -21,6 +21,7 @@ export default function AppRoutes() {
       <Route path={ROUTES.LOGIN} element={<Login />} />
       <Route path={ROUTES.REGISTER} element={<Register />} />
       <Route path={ROUTES.FORGOT_PASSWORD} element={<ForgotPassword />} />
+      <Route path={ROUTES.RESET_PASSWORD} element={<ResetPassword />} />
 
       {/* Private Routes */}
       <Route element={<PrivateRoute />}>

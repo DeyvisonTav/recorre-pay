@@ -2,12 +2,17 @@ import {
   Injectable,
   UnauthorizedException,
   ConflictException,
+  NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
+import * as crypto from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 
 @Injectable()
 export class AuthService {
@@ -174,5 +179,94 @@ export class AuthService {
     };
 
     return this.jwtService.sign(payload);
+  }
+
+  async forgotPassword(dto: ForgotPasswordDto) {
+    const user = await this.prisma.user.findFirst({
+      where: { email: dto.email },
+      include: { tenant: true },
+    });
+
+    // Always return success to prevent email enumeration
+    if (!user) {
+      return {
+        success: true,
+        message: 'Se o email existir, você receberá instruções para redefinir sua senha'
+      };
+    }
+
+    // Generate reset token
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const hashedToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+
+    // Token expires in 1 hour
+    const resetExpires = new Date(Date.now() + 60 * 60 * 1000);
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordResetToken: hashedToken,
+        passwordResetExpires: resetExpires,
+      },
+    });
+
+    // Create notification for password reset
+    const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password?token=${resetToken}`;
+
+    await this.prisma.notification.create({
+      data: {
+        type: 'WELCOME', // Using WELCOME as we don't have PASSWORD_RESET type
+        channel: 'EMAIL',
+        recipient: user.email,
+        subject: 'Redefinição de Senha - RecorrePay',
+        message: `Olá ${user.name},\n\nVocê solicitou a redefinição de sua senha. Clique no link abaixo para criar uma nova senha:\n\n${resetUrl}\n\nEste link expira em 1 hora.\n\nSe você não solicitou esta redefinição, ignore este email.`,
+        status: 'PENDING',
+      },
+    });
+
+    // TODO: Actually send the email
+
+    return {
+      success: true,
+      message: 'Se o email existir, você receberá instruções para redefinir sua senha',
+      // Only return token in development for testing
+      ...(process.env.NODE_ENV === 'development' && { resetToken }),
+    };
+  }
+
+  async resetPassword(dto: ResetPasswordDto) {
+    // Hash the token to compare with stored hash
+    const hashedToken = crypto.createHash('sha256').update(dto.token).digest('hex');
+
+    const user = await this.prisma.user.findFirst({
+      where: {
+        passwordResetToken: hashedToken,
+        passwordResetExpires: {
+          gt: new Date(),
+        },
+      },
+    });
+
+    if (!user) {
+      throw new BadRequestException('Token inválido ou expirado');
+    }
+
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(dto.password, 10);
+
+    // Update password and clear reset token
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        password: hashedPassword,
+        passwordResetToken: null,
+        passwordResetExpires: null,
+      },
+    });
+
+    return {
+      success: true,
+      message: 'Senha alterada com sucesso'
+    };
   }
 }
